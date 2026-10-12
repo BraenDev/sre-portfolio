@@ -1,0 +1,59 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  validate-html:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Validate HTML
+        run: npx --yes html-validate index.html 404.html "projects/*.html"
+
+  check-links:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Verify internal links resolve to files
+        run: |
+          python3 - <<'EOF'
+          import os, re, sys
+          root = os.getcwd()
+          html_files = []
+          for dirpath, _, filenames in os.walk(root):
+              if '.git' in dirpath:
+                  continue
+              for f in filenames:
+                  if f.endswith('.html'):
+                      html_files.append(os.path.join(dirpath, f))
+          failures = []
+          for path in html_files:
+              with open(path, encoding='utf-8') as fh:
+                  content = fh.read()
+              for m in re.finditer(r'href="([^"#]+)"', content):
+                  href = m.group(1)
+                  if href.startswith(('http://', 'https://', 'mailto:')):
+                      continue
+                  target = os.path.normpath(os.path.join(os.path.dirname(path), href))
+                  if os.path.isdir(target):
+                      target = os.path.join(target, 'index.html')
+                  if not os.path.isfile(target):
+                      failures.append(f"{os.path.relpath(path, root)} -> {href}")
+          if failures:
+              print("Broken internal links:")
+              print("\n".join(failures))
+              sys.exit(1)
+          print(f"OK: {len(html_files)} pages, all internal links resolve.")
+          EOF
