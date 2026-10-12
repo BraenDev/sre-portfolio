@@ -1,0 +1,107 @@
+BraenDev / sre-portfolio ☰
+About
+Explore
+sre-lab repo
+Project — implemented in my SRE lab to demonstrate health-check design
+
+HTTP Service Health Monitor
+A Python prober that answers the most basic reliability question — is this service healthy right now? — by checking a list of targets, classifying each as HEALTHY, DEGRADED, or UNHEALTHY from its status code and latency, and recording severity-mapped logs. The smallest possible version of the monitoring that underpins alerting, SLOs, and automated remediation.
+
+Business / reliability problem
+Every SRE practice — alerting, dashboards, SLOs, auto-remediation — depends on one primitive: a trustworthy health verdict per service. This project builds that primitive from scratch: probe targets over HTTP, turn raw signals (status code, latency, connection errors) into a verdict, and emit it in two forms — human-readable console output for the operator, and severity-mapped log lines a log aggregator can alert on.
+
+Architecture
+Linear pipeline, no moving parts:
+
+Targets — a list of URLs to probe.
+check_service() — GETs each URL with a 5 second timeout, measures latency.
+Verdict — HEALTHY / DEGRADED / UNHEALTHY from status code + latency thresholds.
+Two outputs — console summary for humans, log file with severity mapped to health for machines.
+Technologies
+Python 3, the requests library, and the standard library (logging, time, datetime). Nothing else — the point is the verdict logic, not the tooling.
+
+Implementation
+Full source: sre-lab/python/health_check.py. The core decisions live in the thresholds and the verdict logic:
+
+TIMEOUT_SECONDS = 5
+DEGRADED_LATENCY_MS = 500
+UNHEALTY_LATENCY_MS = 1500
+
+if 200 <= response.status_code < 400:
+    if latency_ms < DEGRADED_LATENCY_MS:
+        health = "HEALTHY"
+    elif latency_ms < UNHEALTY_LATENCY_MS:
+        health = "DEGRADED"
+    else:
+        health = "UNHEALTHY"
+else:
+    health = "UNHEALTHY"
+Severity is mapped to the log level, so downstream alerting is a one-line rule (alert on ERROR):
+
+if result["health"] == "HEALTHY":
+    logging.info(log_message)
+elif result["health"] == "DEGRADED":
+    logging.warning(log_message)
+else:
+    logging.error(log_message)
+Reliability design
+Timeouts everywhere. A 5 second cap means a hung service degrades the check instead of hanging the checker — a check that blocks forever is worse than no check.
+Exceptions become verdicts, never crashes. DNS failures, refused connections, and timeouts are caught and recorded as UNHEALTHY with the error string attached.
+Three states, not two. DEGRADED (slow but responding) is operationally different from UNHEALTHY — it means investigate soon rather than act now.
+Observability
+Each probe emits one log line carrying everything needed to triage without re-running the check:
+
+2026-10-12 16:11:30,659 | ERROR | url=https://this-service-does-not-exist.invalid
+    health=UNHEALTHY status=None latency_ms=287.36 error=HTTPSConnectionPool(...)
+Timestamps carry the local timezone, and the level mapping (INFO / WARNING / ERROR) means a log pipeline can route DEGRADED to a dashboard and UNHEALTHY straight to a paging rule.
+
+Failure test
+The target list deliberately includes a guaranteed failure — https://this-service-does-not-exist.invalid (the .invalid TLD never resolves). Every run therefore exercises both the success path and the failure path, and the latency thresholds are tested whenever a real target responds slowly.
+
+Detection
+In the sample run below, the dead target raised a connection error, which was caught, classified UNHEALTHY, and logged at ERROR with the full error string. The two slow-but-responding targets tripped the 500 ms threshold and were classified DEGRADED — the script distinguished slow from down exactly as designed.
+
+Recovery
+Honest scope note: this version detects and records; it does not remediate. Recovery is the operator reading the ERROR line and acting on it — which is precisely why the log line carries the URL, verdict, and error in one place. Automated remediation (detect → restart → verify → re-add to traffic) is the planned follow-up project, modeled on the AestheticsPro Lucee incident workflow.
+
+Results
+Sample run output — console:
+
+Timestamp: 2026-10-12T16:11:28-07:00
+URL: https://example.com
+Health: DEGRADED
+Status: 200
+Latency: 857.30 ms
+
+Timestamp: 2026-10-12T16:11:30-07:00
+URL: https://this-service-does-not-exist.invalid
+Health: UNHEALTHY
+Latency: 287.36 ms
+Error: HTTPSConnectionPool(host='this-service-does-not-exist.invalid',
+  port=443): Max retries exceeded ...
+And the corresponding log file — note the severity mapping doing its job:
+
+2026-10-12 16:11:29,708 | WARNING | url=https://example.com
+    health=DEGRADED status=200 latency_ms=857.30
+2026-10-12 16:11:30,659 | ERROR | url=https://this-service-does-not-exist.invalid
+    health=UNHEALTHY status=None latency_ms=287.36 error=...
+Repository & runbook
+Source: BraenDev/sre-lab (python/health_check.py).
+
+Mini-runbook — "health check reports UNHEALTHY":
+
+Read the error= field on the ERROR log line.
+Connection/DNS errors → the service or network path is down; check the host and load balancer.
+HTTP 5xx → application-side failure; check application logs.
+DEGRADED (WARNING, not ERROR) → latency investigation, not an incident — check saturation and downstream dependencies.
+Production considerations
+What would change before this ran against real production:
+
+Scheduling. It runs once per invocation — production needs a systemd timer or cron.
+Alerting. Logs alone don't page anyone; add a webhook or PagerDuty hook on UNHEALTHY.
+Configuration. Targets and thresholds belong in a config file, not hardcoded constants.
+Resilience. Retries with backoff before declaring UNHEALTHY, to avoid flapping on transient blips.
+Log rotation. An ever-growing log file is its own incident; rotate and ship to centralized logging.
+Lab work on this site is labeled as lab work. Back to the portfolio.
+
+© 2026 Matthew Smith.
