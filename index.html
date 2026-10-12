@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Matthew Smith — SRE Portfolio</title>
+<meta name="description" content="Employer-facing SRE portfolio for Matthew Smith (BraenDev): hands-on reliability engineering — systems designed, built, intentionally broken, recovered, and documented.">
+<link rel="stylesheet" href="assets/css/style.css">
+</head>
+<body>
+<header class="site-header">
+  <nav class="nav" aria-label="Primary">
+    <a class="brand" href="index.html">BraenDev <span>/ sre-portfolio</span></a>
+    <button class="nav-toggle" type="button" aria-label="Toggle navigation" aria-expanded="false">&#9776;</button>
+    <ul class="nav-links">
+      <li><a href="#about">About</a></li>
+      <li><a href="#principles">Principles</a></li>
+      <li><a href="#explore">Explore</a></li>
+      <li><a href="#roadmap">Roadmap</a></li>
+      <li><a href="https://github.com/BraenDev" rel="noopener">GitHub</a></li>
+    </ul>
+  </nav>
+</header>
+
+<main>
+  <section class="hero">
+    <p class="kicker">Site Reliability Engineering — demonstrated, not claimed</p>
+    <h1>Matthew Smith</h1>
+    <p class="lede">Senior infrastructure engineer with 25+ years in IT and 15+ in enterprise environments.
+      This portfolio proves modern SRE capability the only honest way: systems I designed, built,
+      <em>intentionally broke</em>, detected failing, recovered, measured, and documented.</p>
+    <div class="hero-actions">
+      <a class="btn" href="#explore">Explore the work</a>
+      <a class="btn btn-ghost" href="https://github.com/BraenDev/sre-portfolio" rel="noopener">View the source</a>
+    </div>
+    <dl class="stats">
+      <div><dt>25+</dt><dd>years in IT infrastructure</dd></div>
+      <div><dt>15+</dt><dd>years enterprise environments</dd></div>
+      <div><dt>100%</dt><dd>of lab work labeled as lab work</dd></div>
+    </dl>
+  </section>
+
+  <section id="about" class="section">
+    <h2>Background</h2>
+    <div class="prose">
+      <p>I spent over a decade supporting <strong>Tyler Technologies'</strong> Enterprise Justice / Odyssey
+        platform (2012–2025, remote) across SaaS and on-site customer environments — production incident
+        response, application and server deployments, upgrades, and troubleshooting at scale. Most recently
+        at <strong>AestheticsPro</strong> (2025–2026, remote), I handled production incidents on a Lucee-based
+        web platform, including the manual runbook every on-call engineer knows: pull the node from the load
+        balancer, restart services, verify health, return it to traffic, notify stakeholders.</p>
+      <p>That toil is exactly what SRE exists to eliminate — and this site is where I prove I can eliminate
+        it. Core stack: VMware vSphere, Windows Server, Active Directory / Entra ID, Cisco networking and
+        firewalls, NetApp and Dell storage, Veeam, SIEM (LevelBlue/AlienVault), Datadog, and scripting in
+        PowerShell, Python, and Bash. The labs here add Kubernetes, Terraform, Prometheus/Grafana, and CI/CD
+        on top of that foundation.</p>
+    </div>
+  </section>
+
+  <section id="principles" class="section">
+    <h2>How this portfolio works</h2>
+    <div class="cards">
+      <article class="card">
+        <h3>Evidence over claims</h3>
+        <p>No skills lists. Every project shows the problem, the architecture, the code, the failure test,
+          how it was detected, how it recovered — and the metrics that prove it.</p>
+      </article>
+      <article class="card">
+        <h3>Lab work is labeled lab work</h3>
+        <p>Nothing here pretends a home lab was a production outage. Implementations are framed as what
+          they are: <em>"implemented in my SRE lab to demonstrate…"</em></p>
+      </article>
+      <article class="card">
+        <h3>Production-readiness, assessed</h3>
+        <p>Each project closes with what would have to change before real production: redundancy, secrets
+          management, TLS, backup testing, load testing. Judgment is the deliverable.</p>
+      </article>
+    </div>
+  </section>
+
+  <section id="explore" class="section">
+    <h2>Explore</h2>
+    <p class="section-sub">Project pages follow one template: problem → architecture → implementation →
+      failure test → detection → recovery → verification → lessons → production-readiness.</p>
+    <div class="cards">
+      <article class="card"><h3>SRE Projects</h3><p>Flagship reliability builds: health monitoring, automated remediation, failover.</p><p class="status building">Building now</p></article>
+      <article class="card"><h3>Linux</h3><p>Service management with systemd, journalctl forensics, resource troubleshooting.</p><p class="status planned">Planned</p></article>
+      <article class="card"><h3>Python &amp; Automation</h3><p>Health checks, log parsing, remediation scripts — automation as toil reduction.</p><p class="status building">Building now</p></article>
+      <article class="card"><h3>Kubernetes</h3><p>Deployments, probes, scaling, and failure recovery on a kind cluster.</p><p class="status planned">Planned</p></article>
+      <article class="card"><h3>Infrastructure as Code</h3><p>Terraform: reproducible networks, compute, and environment separation.</p><p class="status planned">Planned</p></article>
+      <article class="card"><h3>Observability</h3><p>Prometheus, Grafana, and SLIs chosen because they mean something operationally.</p><p class="status planned">Planned</p></article>
+      <article class="card"><h3>Reliability Engineering</h3><p>SLOs, error budgets, and controlled chaos drills with measured MTTR.</p><p class="status planned">Planned</p></article>
+      <article class="card"><h3>Runbooks</h3><p>Operational procedures: symptoms → diagnosis → remediation → verification.</p><p class="status planned">Planned</p></article>
+      <article class="card"><h3>Incidents &amp; Postmortems</h3><p>Lab incident write-ups — timelines, root cause, and corrective actions.</p><p class="status planned">Planned</p></article>
+      <article class="card"><h3>Architecture</h3><p>Diagrams and design decisions, including the tradeoffs and the rejected options.</p><p class="status planned">Planned</p></article>
+    </div>
+  </section>
+
+  <section id="roadmap" class="section">
+    <h2>How pages get published</h2>
+    <ol class="steps">
+      <li><strong>Learn</strong> — one primary resource per technology, no tutorial hoarding.</li>
+      <li><strong>Build</strong> — a working lab system, committed to GitHub.</li>
+      <li><strong>Break</strong> — a controlled, intentional failure.</li>
+      <li><strong>Troubleshoot</strong> — detect, diagnose, recover, measure.</li>
+      <li><strong>Document</strong> — runbook and postmortem, written like production.</li>
+      <li><strong>Publish</strong> — a project page here, following the template.</li>
+    </ol>
+    <p class="prose">The site grows as SRE study quests complete. The long-term capstone —
+      <strong>Project RELIQUARY</strong> — will integrate Terraform, Kubernetes, CI/CD, observability,
+      SLOs, and automated remediation into one platform.</p>
+  </section>
+</main>
+
+<footer class="site-footer">
+  <p>Lab work on this site is labeled as lab work. Deployed with GitHub Actions; source at
+    <a href="https://github.com/BraenDev/sre-portfolio" rel="noopener">BraenDev/sre-portfolio</a>.</p>
+  <p>&copy; <span id="year">2026</span> Matthew Smith.</p>
+</footer>
+
+<script src="assets/js/main.js"></script>
+</body>
+</html>
