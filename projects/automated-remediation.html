@@ -1,0 +1,247 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Automated Service Remediation — Matthew Smith, SRE Portfolio</title>
+<meta name="description" content="Automated remediation lab: detect an unhealthy service, isolate it from traffic, restart it, verify recovery, or escalate — with safety guards throughout.">
+<link rel="stylesheet" href="../assets/css/style.css">
+</head>
+<body>
+<header class="site-header">
+  <nav class="nav" aria-label="Primary">
+    <a class="brand" href="../index.html">BraenDev <span>/ sre-portfolio</span></a>
+    <button class="nav-toggle" type="button" aria-label="Toggle navigation" aria-expanded="false">&#9776;</button>
+    <ul class="nav-links">
+      <li><a href="../index.html#about">About</a></li>
+      <li><a href="../index.html#explore">Explore</a></li>
+      <li><a href="https://github.com/BraenDev/sre-lab" rel="noopener">sre-lab repo</a></li>
+    </ul>
+  </nav>
+</header>
+
+<main>
+  <section class="hero" style="padding-top:3rem;">
+    <p class="kicker">Project — implemented in my SRE lab to demonstrate automated remediation</p>
+    <h1>Automated Service Remediation</h1>
+    <p class="lede">A remediation engine that closes the loop project #1 left open. When a service goes
+      UNHEALTHY it <em>acts</em>: pulls the node from traffic, restarts the service, verifies health,
+      and either restores it or escalates to a human — with attempt limits, cooldowns, and a
+      verify-before-serve gate so the automation can never make things worse. Modeled directly on
+      the production incident workflow I ran at AestheticsPro.</p>
+  </section>
+
+  <section class="section">
+    <h2>Business / reliability problem</h2>
+    <div class="prose">
+      <p>At AestheticsPro, a Lucee web node going unhealthy meant a human worked this runbook by hand,
+        usually under pressure:</p>
+      <ol>
+        <li>Remove the node from the load balancer</li>
+        <li>Restart the Lucee and WWW services</li>
+        <li>Verify application health</li>
+        <li>Return the node to the load balancer</li>
+        <li>Confirm service, document, notify stakeholders</li>
+      </ol>
+      <p>Every step is mechanical, every minute of it is toil, and a tired operator can skip step 1 or
+        botch step 3. This project automates the runbook — and, more importantly, automates the
+        <em>judgment</em> around it: when to act, when to wait, and when to stop and call a human.</p>
+    </div>
+  </section>
+
+  <section class="section">
+    <h2>Architecture</h2>
+    <div class="prose"><p>One run of the remediator makes one decision. Designed for a scheduler
+      (cron / systemd timer):</p></div>
+    <ol class="steps">
+      <li><strong>Check</strong> — probe the health endpoint; classify HEALTHY / DEGRADED / UNHEALTHY.</li>
+      <li><strong>Decide</strong> — HEALTHY: reset failure count. DEGRADED: log, no action. UNHEALTHY: continue.</li>
+      <li><strong>Gate</strong> — lock file present? Stop. Cooldown active? Stop. Attempts exhausted? Escalate.</li>
+      <li><strong>Isolate</strong> — remove the node from the pool <em>before</em> touching the service.</li>
+      <li><strong>Restart</strong> — stop (graceful, then SIGKILL if needed), start fresh, track the PID.</li>
+      <li><strong>Verify</strong> — poll health up to 5 times. Only a verified-healthy node returns to the pool.</li>
+      <li><strong>Restore or escalate</strong> — recovered: back to the pool, counters reset. Still down: node
+        stays <em>out</em> of the pool, failure recorded; at the attempt limit, CRITICAL escalation.</li>
+    </ol>
+    <div class="prose"><p>The load balancer is simulated as <code>pool.json</code> — a deliberate lab simplification.
+      What's real is the <em>ordering</em>: traffic is never served from an unverified node, and a failed
+      remediation fails <em>safe</em> (node stays out), never <em>open</em>.</p></div>
+  </section>
+
+  <section class="section">
+    <h2>Technologies</h2>
+    <div class="prose"><p>Python 3, the <code>requests</code> library, and the standard library
+      (<code>subprocess</code>, <code>json</code>, <code>logging</code>, <code>signal</code>).
+      The demo patient is a 30-line <code>http.server</code> with a <code>/health</code> endpoint —
+      real enough to kill and restart, simple enough to reason about.</p></div>
+  </section>
+
+  <section class="section">
+    <h2>Implementation</h2>
+    <div class="prose">
+      <p>Full source: <a href="https://github.com/BraenDev/sre-lab" rel="noopener">BraenDev/sre-lab</a>
+        (<code>python/remediate.py</code>, <code>python/demo_service.py</code>).
+        The remediation cycle — isolate, restart, verify, restore-or-hold:</p>
+    </div>
+<pre><code>def remediate(state):
+    # 1. Isolate: take the node out of traffic BEFORE touching it.
+    remove_from_pool()
+
+    # 2. Restart.
+    stop_service()
+    start_service()
+
+    # 3. Verify before serving traffic again. Never return an
+    #    unverified node to the pool.
+    if verify_health():
+        return_to_pool()
+        return True
+
+    log("leaving it OUT of the pool (fail safe, not fail open)")
+    return False</code></pre>
+    <div class="prose"><p>And the decision gates that run before any action is taken:</p></div>
+<pre><code>if os.path.exists(LOCK_FILE):        # manual override -- a human is in charge
+    return 0                           # take no action at all
+if state["consecutive_failures"] >= MAX_ATTEMPTS:
+    log(CRITICAL, "... ESCALATING, human intervention required")
+    return 2
+if time.time() - state["last_attempt"] &lt; COOLDOWN_SECONDS:
+    log(WARNING, "In cooldown -- skipping remediation")
+    return 1</code></pre>
+  </section>
+
+  <section class="section">
+    <h2>Reliability design</h2>
+    <div class="prose">
+      <p>The guards are the project. Automation without them is how you turn one failed node into
+        a restart storm:</p>
+      <ul>
+        <li><strong>Attempt limit (3).</strong> Consecutive failed remediations escalate to CRITICAL
+          and stop. The script exits 2 — a scheduler can page on that.</li>
+        <li><strong>Cooldown (120&nbsp;s).</strong> Minimum gap between attempts; a second run inside
+          the window skips remediation instead of hammering a dying service.</li>
+        <li><strong>Verify-before-serve.</strong> Up to 5 post-restart health polls; the node returns
+          to the pool only on a verified HEALTHY.</li>
+        <li><strong>Fail safe.</strong> If verification fails, the node <em>stays out</em> of the pool.
+          Reduced capacity is better than serving errors.</li>
+        <li><strong>Manual override.</strong> A <code>remediation.lock</code> file disables all action —
+          for maintenance windows or when a human wants the wheel.</li>
+        <li><strong>DEGRADED is not UNHEALTHY.</strong> Slow-but-working services are logged, never
+          restarted. No restart storms over latency.</li>
+      </ul>
+    </div>
+  </section>
+
+  <section class="section">
+    <h2>Observability</h2>
+    <div class="prose">
+      <p>Every decision is logged with a timestamp, and the exit code tells a scheduler what happened:
+        <code>0</code> healthy or no action needed, <code>1</code> unhealthy (handled, failed, or cooling
+        down), <code>2</code> escalated — page a human. <code>pool.json</code> and
+        <code>remediation_state.json</code> are inspectable at any moment: who is serving traffic,
+        how many failures in a row, when the last attempt ran.</p>
+    </div>
+  </section>
+
+  <section class="section">
+    <h2>Failure test</h2>
+    <div class="prose">
+      <p>Two controlled failures, both executed for real:</p>
+      <ol>
+        <li><strong>Crashed service.</strong> Killed the demo service process, then ran the remediator.</li>
+        <li><strong>Unrecoverable service.</strong> Pointed the start command at a nonexistent script
+          (simulating a corrupted deployment), with the attempt limit lowered to 1 — forcing the
+          escalation path.</li>
+      </ol>
+    </div>
+  </section>
+
+  <section class="section">
+    <h2>Detection</h2>
+    <div class="prose">
+      <p>The killed service refused connections; the prober classified it UNHEALTHY in ~2&nbsp;ms and
+        the remediation cycle began on the same run. No separate monitoring layer needed for the lab —
+        detection and response live in one auditable flow.</p>
+    </div>
+  </section>
+
+  <section class="section">
+    <h2>Recovery</h2>
+    <div class="prose">
+      <p>Real console output from the crash test. Note verification attempt 1 failing — the fresh
+        process needed a moment to bind its port — and attempt 2 succeeding. The retry loop earned
+        its keep:</p>
+    </div>
+<pre><code>[INFO] demo-web: UNHEALTHY (2 ms)
+[ERROR] demo-web is UNHEALTHY -- beginning remediation (attempt 1/3)
+[WARNING] Removed demo-web from load-balancer pool (pool now: [])
+[INFO] No PID file -- service already stopped
+[WARNING] Started demo-web (pid 7558): python3 demo_service.py
+[INFO] Verification 1/5: UNHEALTHY (3 ms)
+[INFO] Verification 2/5: HEALTHY (3 ms)
+[INFO] Returned demo-web to load-balancer pool (pool now: ['demo-web'])
+[INFO] demo-web recovered -- remediation complete</code></pre>
+    <div class="prose"><p>And the escalation test — when the service <em>can't</em> recover:</p></div>
+<pre><code>[INFO] demo-web: UNHEALTHY (2 ms)
+[CRITICAL] demo-web failed 1 remediations -- ESCALATING, human intervention required
+EXIT=2</code></pre>
+  </section>
+
+  <section class="section">
+    <h2>Results</h2>
+    <div class="prose">
+      <p>All five behaviors verified by execution, not by reading the code:</p>
+      <ul>
+        <li>Healthy service → exit 0, zero action taken.</li>
+        <li>Crashed service → detected, isolated, restarted, verified HEALTHY, returned to pool.</li>
+        <li>Unrecoverable service → node held <em>out</em> of the pool, failure counted.</li>
+        <li>Attempt limit reached → CRITICAL escalation, exit 2.</li>
+        <li>Lock file present → manual override, no action, exit 0.</li>
+      </ul>
+      <p>The log file tells the same story independently — every console line above has a matching
+        timestamped entry in <code>logs/remediation.log</code>, with severity mapped to the
+        seriousness of the event.</p>
+    </div>
+  </section>
+
+  <section class="section">
+    <h2>Repository &amp; runbook</h2>
+    <div class="prose">
+      <p>Source: <a href="https://github.com/BraenDev/sre-lab" rel="noopener">BraenDev/sre-lab</a>
+        (<code>python/remediate.py</code>, <code>python/demo_service.py</code>,
+        <code>python/REMEDIATION_LAB.md</code>).</p>
+      <p><strong>Mini-runbook — "remediator escalated (exit 2)":</strong></p>
+      <ol>
+        <li>Check <code>pool.json</code> — the node is already out of traffic; blast radius is contained.</li>
+        <li>Read <code>logs/remediation.log</code> — the last ERROR lines show what restart attempts did.</li>
+        <li>Check <code>demo_service.log</code> — the service's own output often names the cause.</li>
+        <li>Fix the underlying issue, delete the stale state if needed, remove any lock file, and let the next scheduled run verify recovery.</li>
+      </ol>
+    </div>
+  </section>
+
+  <section class="section">
+    <h2>Production considerations</h2>
+    <div class="prose">
+      <p>What would change before this touched real production:</p>
+      <ul>
+        <li><strong>Real load-balancer integration</strong> — API calls to the LB instead of a JSON file,
+          with the same isolate-before-touch ordering.</li>
+        <li><strong>Process supervision</strong> — systemd units instead of PID files; PID files are a lab convenience.</li>
+        <li><strong>Alerting hooks</strong> — webhook/PagerDuty on escalation, not just an exit code and a log line.</li>
+        <li><strong>Configuration file</strong> — targets, thresholds, and commands belong in config, not constants.</li>
+        <li><strong>Richer health signals</strong> — beyond HTTP 200: error rates, saturation, dependency checks.</li>
+        <li><strong>Change safety</strong> — the restart step in production would be a rolling deploy, not a kill-and-start.</li>
+      </ul>
+    </div>
+  </section>
+</main>
+
+<footer class="site-footer">
+  <p>Lab work on this site is labeled as lab work. <a href="../index.html">Back to the portfolio</a>.</p>
+  <p>&copy; <span id="year">2026</span> Matthew Smith.</p>
+</footer>
+
+<script src="../assets/js/main.js"></script>
+</body>
+</html>
